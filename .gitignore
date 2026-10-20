@@ -1,0 +1,8 @@
+.env
+CACHEDIR.TAG
+/Lib
+Scripts/
+etc/
+include/
+pyvenv.cfg
+share/
