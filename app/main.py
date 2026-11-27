@@ -80,17 +80,37 @@ def query(request: QueryRequest):
                 "sources": []
             }
 
-        # Gate 2: LangGraph RAG pipeline
-        # Run the graph synchronously to preserve Logfire context variables
-        final_output = rag_agent.invoke(initial_state, config=config)
-        
-        return {
-            "question": q,
-            "answer": final_output.get("final_answer"),
-            "thought_process": final_output.get("plan"),
-            "status": final_output.get("status"),
-            "sources": final_output.get("documents", [])
-        }
+
+        # Gate 2: Semantic Cache — checks if a similar query has been answered recently
+        if os.getenv("ENABLE_SEMANTIC_CACHE", "false").lower() == "true":
+            try:    
+                from app.services.semantic_cache import check_cache
+                cached_answer = check_cache(q)
+                if cached_answer:
+                    logfire.info(f"⚡ Semantic Cache Hit | thread={thread_id}")
+                    return {
+                        "question": q,
+                        "answer": cached_answer,
+                        "thought_process": ["Intent: Cache Hit", "Retrieval: Skipped"],
+                        "status": "Cache hit — instant response.",
+                        "sources": []
+                    }
+            except Exception as e:
+                logfire.warning(f"⚠️ Cache check failed (non-fatal): {e}")
+
+
+                # Gate 3: LangGraph RAG pipeline
+                # Run the graph synchronously to preserve Logfire context variables
+                final_output = rag_agent.invoke(initial_state, config=config)
+                
+                return {
+                    "question": q,
+                    "answer": final_output.get("final_answer"),
+                    "thought_process": final_output.get("plan"),
+                    "status": final_output.get("status"),
+                    "sources": final_output.get("documents", [])
+                }
+            
     except Exception as e:
         logfire.error(f"❌ Backend Execution Failed: {e}")
         return {
